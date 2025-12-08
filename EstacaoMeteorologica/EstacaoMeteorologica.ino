@@ -85,8 +85,6 @@ int main(void) {
   int32_t raw_temp, raw_press;
   int32_t temp_final;
   uint32_t press_final;
-
-  BMP280_Init();
   
   while (1) {
     // --- Leitura dos Dados Brutos (Burst Read) ---
@@ -155,8 +153,7 @@ void mcu_init(void) {
   _delay_ms(100); // Tempo para o sensor ligar
   
   // Inicialização do Sensor
-  // Escreve 0x27 no Reg 0xF4 (Normal mode, Temp/Press oversampling x1)
-  TWI_Start(); TWI_Write(BMP280_ADDR << 1); TWI_Write(0xF4); TWI_Write(0x27); TWI_Stop();
+  BMP280_Init();
 
   BMP280_ReadCalibrationParams();
 
