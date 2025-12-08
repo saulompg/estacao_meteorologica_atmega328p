@@ -26,18 +26,20 @@
 #include <util/delay.h>
 #include <stdint.h>
 
-// CONFIGURAÇÕES I2C
+// --- Configurações I2C ---
 #define F_SCL 100000UL // Clock I2C de 100kHz
 #define PRESCALER 1
-// Cálculo do Bit Rate (Fórmula do Datasheet)
-#define TWBR_VAL ((((F_CPU / F_SCL) / PRESCALER) - 16) / 2)
+#define TWBR_VAL ((((F_CPU / F_SCL) / PRESCALER) - 16) / 2) // Cálculo do Bit Rate (Fórmula do Datasheet)
 
-// Endereço do BMP280
+// --- Configurações BMP280 ---
 #define BMP280_ADDR      0x76 // Endereço I2C (7 bits)
-#define BMP280_REG_ID    0xD0 // Registrador de ID do chip (deve retornar 0x58)
 #define BMP280_REG_CTRL  0xF4 // Controle de medição
 #define BMP280_REG_DATA  0xF7 // Início dos dados (Pressão MSB)
 #define BMP280_REG_CALIB 0x88 // Início dos dados de calibração
+
+// --- Limites de Alarme ---
+#define TEMP_THRESHOLD   3500   // 35.00 Graus Celsius
+#define PRESS_THRESHOLD  50600  // 506.00 hPa
 
 // --- Variáveis Globais ---
 int32_t t_fine;
@@ -58,10 +60,8 @@ struct BMP280_Calib {
   int16_t  dig_P9;
 } calib;
 
-// ----------------------------------------
-// ESCOPO DAS FUNÇÕES
-// ----------------------------------------
-void mcu_init(void);
+// --- Protótipos ---
+void MCU_Init(void);
 void TWI_Init(void);
 void TWI_Start(void);
 void TWI_Stop(void);
@@ -69,18 +69,23 @@ void TWI_Write(uint8_t data);
 uint8_t TWI_Read_ACK(void);
 uint8_t TWI_Read_NACK(void);
 void BMP280_WriteReg(uint8_t reg, uint8_t value);
-void BMP280_Init(void);
-void BMP280_ReadRaw(void);
-uint16_t BMP280_Read16LE(uint8_t reg);
-void BMP280_ReadCalibrationParams(void);
+void BMP280_ReadCalibrationBurst(void);
 int32_t BMP280_Compensate_T(int32_t adc_T);
 uint32_t BMP280_Compensate_P(int32_t adc_P);
 
 // ----------------------------------------
-// ENTRADA DO PROGRAMA PRINCIPAL
+// PROGRAMA PRINCIPAL
 // ----------------------------------------
 int main(void) {
-  mcu_init();
+  MCU_Init();
+
+  // Inicialização do Sensor (Normal mode, Oversampling x1)
+  // Osrs_t x1 (001), Osrs_p x1 (001), Mode Normal (11)
+  // Binário: 001 001 11 = 0x27
+  BMP280_WriteReg(BMP280_REG_CTRL, 0x27); 
+  
+  // Leitura da calibração (Burst Read)
+  BMP280_ReadCalibrationBurst();
 
   int32_t raw_temp, raw_press;
   int32_t temp_final;
@@ -90,40 +95,36 @@ int main(void) {
     // --- Leitura dos Dados Brutos (Burst Read) ---
     TWI_Start();
     TWI_Write(BMP280_ADDR << 1);
-    TWI_Write(0xF7); // Ponteiro no início dos dados
+    TWI_Write(BMP280_REG_DATA);   // Ponteiro no início dos dados
 
-    TWI_Start(); // Repeated Start para Leitura
-    TWI_Write((BMP280_ADDR << 1) | 1);
+    TWI_Start(); // Restart
+    TWI_Write((BMP280_ADDR << 1) | 1); // Modo Leitura
 
+    // Lê 6 bytes em sequência
     uint8_t p_msb = TWI_Read_ACK();
     uint8_t p_lsb = TWI_Read_ACK();
     uint8_t p_xlsb = TWI_Read_ACK();
     uint8_t t_msb = TWI_Read_ACK();
     uint8_t t_lsb = TWI_Read_ACK();
-    uint8_t t_xlsb = TWI_Read_NACK();
+    uint8_t t_xlsb = TWI_Read_NACK();   // Último byte = NACK
     TWI_Stop();
 
     // Montagem dos inteiros de 20 bits
     raw_press = ((int32_t)p_msb << 12) | ((int32_t)p_lsb << 4) | (p_xlsb >> 4);
     raw_temp  = ((int32_t)t_msb << 12) | ((int32_t)t_lsb << 4) | (t_xlsb >> 4);
 
-    // --- Conversão Matemática ---
+    // Compensação
     temp_final = BMP280_Compensate_T(raw_temp); 
     press_final = BMP280_Compensate_P(raw_press);
 
-    // led acende se temperatura estiver acima de 35°C
-    if (temp_final >= 3500) {
-      PORTB |= (1<<PB0);
-    } else {
-      PORTB &= ~(1<<PB0);
-    }
+    // EXEMPLO DE APLICAÇÃO
+    // LED PB0: Temperatura Alta
+    if (temp_final >= TEMP_THRESHOLD) PORTB |= (1<<PB0);
+    else PORTB &= ~(1<<PB0);
 
-    // led acende se pressão cair para 1/2 ATM (hPa)
-    if (press_final > 50600) {
-      PORTB &= ~(1<<PB1);
-    } else {
-      PORTB |= (1<<PB1);
-    }
+    // LED PB1: Pressão Baixa
+    if (press_final > PRESS_THRESHOLD) PORTB &= ~(1<<PB1);
+    else PORTB |= (1<<PB1);
 
     _delay_ms(1000);
   }
@@ -133,7 +134,7 @@ int main(void) {
 // --------------------------------------------------------
 // CONFIGURAÇÃO DE BAIXO NÍVEL
 // --------------------------------------------------------
-void mcu_init(void) {
+void MCU_Init(void) {
   // 1. Desativa Watchdog
   wdt_disable();
 
@@ -148,16 +149,11 @@ void mcu_init(void) {
   DDRB  = 0xFF; 
   PORTB = 0x00;
 
-  // 5. Configurar periféricos
-  TWI_Init();     // Configura protocolo I2C
-  _delay_ms(100); // Tempo para o sensor ligar
-  
-  // Inicialização do Sensor
-  BMP280_Init();
+  // 5. Configura protocolo I2C
+  TWI_Init(); 
+  _delay_ms(100);
 
-  BMP280_ReadCalibrationParams();
-
-  // 6. Habilita IG
+  // 6. Habilita Interrupção Global
   sei();
 }
 
@@ -167,7 +163,7 @@ void mcu_init(void) {
 void TWI_Init(void) {
 	TWSR = 0x00;                // Prescaler = 1
   TWBR = (uint8_t)TWBR_VAL;   // Configura a velocidade
-	TWCR = (1<<TWEN);           // Habilita o módulo TWI
+  TWCR = (1<<TWEN);           // Habilita o módulo TWI
 }
 
 void TWI_Start(void) {
@@ -191,14 +187,14 @@ void TWI_Write(uint8_t data) {
 	while (!(TWCR & (1<<TWINT)));
 }
 
-// Lê um byte e envia ACK (pedindo mais dados)
+// Lê um byte e solicita mais dados
 uint8_t TWI_Read_ACK(void) {
   TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA);
   while (!(TWCR & (1<<TWINT)));
   return TWDR;
 }
 
-// Lê um byte e envia NACK (dizendo "chega, parei")
+// Lê um byte e encerra
 uint8_t TWI_Read_NACK(void) {
   TWCR = (1<<TWINT) | (1<<TWEN);
   while (!(TWCR & (1<<TWINT)));
@@ -208,13 +204,6 @@ uint8_t TWI_Read_NACK(void) {
 // --------------------------------------------------------
 // FUNÇÕES AUXILIARES PARA BMP280
 // --------------------------------------------------------
-void BMP280_Init(void) {
-  // Configura registrador 0xF4 (ctrl_meas)
-  // Osrs_t x1 (001), Osrs_p x1 (001), Mode Normal (11)
-  // Binário: 001 001 11 = 0x27
-  BMP280_WriteReg(BMP280_REG_CTRL, 0x27);
-}
-
 void BMP280_WriteReg(uint8_t reg, uint8_t value) {
   TWI_Start();
   TWI_Write(BMP280_ADDR << 1); // Endereço + Write (0)
@@ -223,37 +212,41 @@ void BMP280_WriteReg(uint8_t reg, uint8_t value) {
   TWI_Stop();
 }
 
-uint16_t BMP280_Read16LE(uint8_t reg) {
+// Leitura em burst dos bytes de calibração
+void BMP280_ReadCalibrationBurst(void) {
+  uint8_t buf[24];
+
   TWI_Start();
   TWI_Write(BMP280_ADDR << 1);
-  TWI_Write(reg);
-  
-  TWI_Start(); // Repeated Start
+  TWI_Write(BMP280_REG_CALIB);
+
+  TWI_Start();
   TWI_Write((BMP280_ADDR << 1) | 1);
-  
-  uint8_t lsb = TWI_Read_ACK();
-  uint8_t msb = TWI_Read_NACK();
+
+  // Lê os primeiros 23 bytes com ACK
+  for (int i = 0; i < 23; i++) {
+    buf[i] = TWI_Read_ACK();
+  }
+  // Lê o último byte e responde com NACK
+  buf[23] = TWI_Read_NACK();
   TWI_Stop();
-  
-  return (uint16_t)((msb << 8) | lsb);
+
+  // Reconstrói a estrutura (Little Endian)
+  calib.dig_T1 = (buf[1] << 8) | buf[0];    // 0x88
+  calib.dig_T2 = (buf[3] << 8) | buf[2];    // 0x8A
+  calib.dig_T3 = (buf[5] << 8) | buf[4];    // 0x8C
+  calib.dig_P1 = (buf[7] << 8) | buf[6];    // 0x8E
+  calib.dig_P2 = (buf[9] << 8) | buf[8];    // 0x90
+  calib.dig_P3 = (buf[11] << 8) | buf[10];  // 0x92
+  calib.dig_P4 = (buf[13] << 8) | buf[12];  // 0x94
+  calib.dig_P5 = (buf[15] << 8) | buf[14];  // 0x96
+  calib.dig_P6 = (buf[17] << 8) | buf[16];  // 0x98
+  calib.dig_P7 = (buf[19] << 8) | buf[18];  // 0x9A
+  calib.dig_P8 = (buf[21] << 8) | buf[20];  // 0x9C
+  calib.dig_P9 = (buf[23] << 8) | buf[22];  // 0x9E
 }
 
-void BMP280_ReadCalibrationParams(void) {
-  calib.dig_T1 = (uint16_t) BMP280_Read16LE(0x88);
-  calib.dig_T2 = (int16_t)  BMP280_Read16LE(0x8A);
-  calib.dig_T3 = (int16_t)  BMP280_Read16LE(0x8C);
-  
-  calib.dig_P1 = (uint16_t) BMP280_Read16LE(0x8E);
-  calib.dig_P2 = (int16_t)  BMP280_Read16LE(0x90);
-  calib.dig_P3 = (int16_t)  BMP280_Read16LE(0x92);
-  calib.dig_P4 = (int16_t)  BMP280_Read16LE(0x94);
-  calib.dig_P5 = (int16_t)  BMP280_Read16LE(0x96);
-  calib.dig_P6 = (int16_t)  BMP280_Read16LE(0x98);
-  calib.dig_P7 = (int16_t)  BMP280_Read16LE(0x9A);
-  calib.dig_P8 = (int16_t)  BMP280_Read16LE(0x9C);
-  calib.dig_P9 = (int16_t)  BMP280_Read16LE(0x9E);
-}
-
+// Função matemática de compensação 32 bits para Temperatura
 int32_t BMP280_Compensate_T(int32_t adc_T) {
   int32_t var1, var2, T;
   
@@ -266,6 +259,7 @@ int32_t BMP280_Compensate_T(int32_t adc_T) {
   return T; 
 }
 
+// Função matemática de compensação 32 bits para Pressão
 uint32_t BMP280_Compensate_P(int32_t adc_P) {
   int32_t var1, var2;
   uint32_t p;
