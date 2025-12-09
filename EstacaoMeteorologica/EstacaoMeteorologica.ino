@@ -43,6 +43,7 @@
 
 // --- Variáveis Globais ---
 int32_t t_fine;
+volatile uint8_t flag_ler_sensor = 0;
 
 // Estrutura para armazenar os parâmetros de calibração do BMP280
 struct BMP280_Calib {
@@ -92,6 +93,12 @@ int main(void) {
   uint32_t press_final;
   
   while (1) {
+
+    // Verifica se o Timer1 mandou executar (passou 1 segundo)
+    if (flag_ler_sensor) {
+      flag_ler_sensor = 0; // Limpa a flag imediatamente
+    }
+
     // --- Leitura dos Dados Brutos (Burst Read) ---
     TWI_Start();
     TWI_Write(BMP280_ADDR << 1);
@@ -129,6 +136,34 @@ int main(void) {
     _delay_ms(1000);
   }
   return 0;
+}
+
+// ----------------------------------------
+// CONFIGURAÇÃO DO TIMER 1 (1 Segundo)
+// ----------------------------------------
+void Timer1_Init(void) {
+    // Configura Modo CTC (Clear Timer on Compare Match)
+    // TCCR1B: WGM12 = 1 (Tabela 16-4 do datasheet, p. 130)
+    TCCR1B |= (1 << WGM12);
+
+    // Define o valor de comparação para 1 segundo (1Hz)
+    // Fórmula: (16.000.000 / (1024 * 1)) - 1 = 15624
+    // Datasheet p. 132 (OCR1A)
+    OCR1A = 15624;
+
+    // Habilita Interrupção de Comparação A
+    // TIMSK1: OCIE1A = 1 (Datasheet p. 133)
+    TIMSK1 |= (1 << OCIE1A);
+
+    // Inicia o Timer com Prescaler 1024
+    // TCCR1B: CS12 = 1, CS10 = 1 (Tabela 16-5 do datasheet, p. 131)
+    TCCR1B |= (1 << CS12) | (1 << CS10);
+}
+
+// Rotina de Serviço de Interrupção (ISR)
+ISR(TIMER1_COMPA_vect) {
+    // Esta função é chamada automaticamente pelo hardware a cada 1 segundo
+    flag_ler_sensor = 1;
 }
 
 // --------------------------------------------------------
