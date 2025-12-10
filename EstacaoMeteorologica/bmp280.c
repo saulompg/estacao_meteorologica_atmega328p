@@ -25,14 +25,6 @@ void BMP280_WriteReg(uint8_t reg, uint8_t value) {
   TWI_Stop();
 }
 
-static uint16_t BMP280_Read16LE(uint8_t reg) {
-  TWI_Start(); TWI_Write(BMP280_ADDR << 1); TWI_Write(reg);
-  TWI_Start(); TWI_Write((BMP280_ADDR << 1) | 1);
-  uint8_t l = TWI_Read_ACK(); uint8_t m = TWI_Read_NACK();
-  TWI_Stop();
-  return (m << 8) | l;
-}
-
 // --- Funções de Compensação ---
 int32_t compensate_T(int32_t adc_T) {
   int32_t var1, var2, T;
