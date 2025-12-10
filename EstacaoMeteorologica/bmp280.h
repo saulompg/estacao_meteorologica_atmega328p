@@ -18,7 +18,7 @@
 
 void BMP280_Init(void);	
 void BMP280_ReadCalibration(void);
-void BMP280_ReadSensor(int32_t *temp_final, int32_t *press_final);
+void BMP280_ReadSensor(int32_t *temp_final, uint32_t *press_final);
 
 #endif	/* BMP280_H */
 

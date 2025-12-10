@@ -109,7 +109,7 @@ void BMP280_ReadCalibration(void) {
   calib.dig_P9 = (buf[23] << 8) | buf[22];  // 0x9E
 }
 
-void BMP280_ReadSensor(int32_t *temp_final, int32_t *press_final) {
+void BMP280_ReadSensor(int32_t *temp_final, uint32_t *press_final) {
   TWI_Start();
   TWI_Write(BMP280_ADDR << 1);
   TWI_Write(BMP280_REG_DATA);   // Ponteiro no início dos dados
