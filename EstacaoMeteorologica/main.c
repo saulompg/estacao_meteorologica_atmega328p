@@ -15,6 +15,7 @@
       - SDA: PC4 (A4)
       - SCL: PC5 (A5)
  -------------------------------------------- */
+ #define F_CPU 16000000UL
 
 #include <avr/io.h>
 #include <avr/wdt.h>
