@@ -17,7 +17,7 @@
       - CSB: +5V
       - SDO: GND
  -------------------------------------------- */
- #define F_CPU 16000000UL
+#define F_CPU 16000000UL
 
 #include <avr/io.h>
 #include <avr/wdt.h>
@@ -61,6 +61,12 @@ const uint8_t custom_chars[6][8] = {
 // --- Protótipos ---
 void MCU_Init(void);
 void TMR1_Init(void);
+
+void LCD_UpdateData(int32_t temp, uint32_t press);
+void LCD_SendDecimal(int32_t valor);
+void LCD_LoadCustomChar(void);
+void LCD_TelaInicial(void);
+void LCD_PrintIcon(uint8_t col);
 
 // ----------------------------------------
 // TRATAMENTO DA INTERRUPÇÃO
@@ -165,17 +171,6 @@ void TMR1_Init(void) {
 }
 
 // --- Personalização de Telas LCD ---
-void LCD_TelaInicial(void) {
-  LCD_SetCursor(0, 3);
-  LCD_SendString("-- UFBA --");
-  _delay_ms(2000);
-  LCD_Clear();
-  LCD_SetCursor(0, 4);
-  LCD_SendString("Sistemas");
-  LCD_SetCursor(1, 0);
-  LCD_SendString("Microcontrolados");
-}
-
 void LCD_UpdateData(int32_t temp, uint32_t press) {
   char buffer[16];
   LCD_Clear();
@@ -227,6 +222,17 @@ void LCD_LoadCustomChar(void) {
   }
   // Retorna o cursor para a memória de display
   LCD_SendCommand(0x80); 
+}
+
+void LCD_TelaInicial(void) {
+  LCD_SetCursor(0, 3);
+  LCD_SendString("-- UFBA --");
+  _delay_ms(2000);
+  LCD_Clear();
+  LCD_SetCursor(0, 4);
+  LCD_SendString("Sistemas");
+  LCD_SetCursor(1, 0);
+  LCD_SendString("Microcontrolados");
 }
 
 void LCD_PrintIcon(uint8_t col) {
