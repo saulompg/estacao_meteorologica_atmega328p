@@ -107,7 +107,7 @@ int main(void) {
       else PORTB |= (1<<PB1);
 
       LCD_UpdateData(temp, press);
-      LCD_PrintIcon();
+      LCD_PrintIcon(13);
     }
   }
   return 0;
