@@ -14,6 +14,8 @@
     Hardware Connection (Arduino Uno / ATmega328p):
       - SDA: PC4 (A4)
       - SCL: PC5 (A5)
+      - CSB: +5V
+      - SDO: GND
  -------------------------------------------- */
  #define F_CPU 16000000UL
 
@@ -24,6 +26,7 @@
 
 #include "twi.h"
 #include "bmp280.h"
+#include "lcd.h"
 
 // --- Limites de Alarme ---
 #define TEMP_THRESHOLD   3500   // 35.00 Graus Celsius
@@ -38,6 +41,22 @@ const uint16_t T1_init = 0;
 const uint16_t T1_comp = 15625;
 // Gerenciar intervalo de leitura do sensor
 const uint8_t read_interval = 5;
+
+// --- Caracteres customizados ---
+const uint8_t custom_chars[6][8] = {
+  // ec_00 (Índice 0)
+  {0b00001, 0b00011, 0b00011, 0b01110, 0b11100, 0b11000, 0b01000, 0b01000},
+  // ec_01 (Índice 1)
+  {0b10001, 0b11111, 0b00000, 0b00000, 0b11111, 0b10001, 0b01000, 0b00100},
+  // ec_02 (Índice 2)
+  {0b10000, 0b11000, 0b11000, 0b01110, 0b00111, 0b00011, 0b00010, 0b00010},
+  // ec_10 (Índice 3)
+  {0b01000, 0b11000, 0b11100, 0b01110, 0b00011, 0b00011, 0b00001, 0b00000},
+  // ec_11 (Índice 4)
+  {0b01000, 0b10001, 0b11111, 0b00000, 0b00000, 0b11111, 0b10001, 0b00000},
+  // ec_12 (Índice 5)
+  {0b00010, 0b00011, 0b00111, 0b01110, 0b11000, 0b11000, 0b10000, 0b00000}
+};
 
 // --- Protótipos ---
 void MCU_Init(void);
@@ -61,12 +80,17 @@ ISR(TIMER1_COMPA_vect) {
 int main(void) {
   MCU_Init();
 
+  LCD_Init();
+  LCD_LoadCustomChar();
+
   BMP280_Init(); 
   BMP280_ReadCalibration();
 
+  LCD_TelaInicial();
+
   int32_t temp;
   uint32_t press;
-    
+
   while (1) {
     if (read_sensor_flag) {
       read_sensor_flag = 0;
@@ -81,6 +105,9 @@ int main(void) {
       // LED PB1: Pressão Baixa
       if (press > PRESS_THRESHOLD) PORTB &= ~(1<<PB1);
       else PORTB |= (1<<PB1);
+
+      LCD_UpdateData(temp, press);
+      LCD_PrintIcon();
     }
   }
   return 0;
@@ -112,6 +139,8 @@ void MCU_Init(void) {
 
   // 7. Habilita Interrupção Global
   sei();
+
+  _delay_ms(50);
 }
 
 void TMR1_Init(void) {
@@ -133,4 +162,80 @@ void TMR1_Init(void) {
 
   // Habilita a Interrupção de Comparação A do Timer1
   TIMSK1 |= (1<<OCIE1A);
+}
+
+// --- Personalização de Telas LCD ---
+void LCD_TelaInicial(void) {
+  LCD_SetCursor(0, 3);
+  LCD_SendString("-- UFBA --");
+  _delay_ms(2000);
+  LCD_Clear();
+  LCD_SetCursor(0, 4);
+  LCD_SendString("Sistemas");
+  LCD_SetCursor(1, 0);
+  LCD_SendString("Microcontrolados");
+}
+
+void LCD_UpdateData(int32_t temp, uint32_t press) {
+  char buffer[16];
+  LCD_Clear();
+  LCD_SetCursor(0, 0);
+  LCD_SendString("T: ");
+  LCD_SendDecimal(temp);
+  LCD_SendData(0xDF); // Caractere 'º'
+  LCD_SendString("C");
+
+  ltoa(press/100, buffer, 10);
+  LCD_SetCursor(1, 0);
+  LCD_SendString("P: ");
+  LCD_SendString(buffer);
+  LCD_SendString(" hPa");
+}
+
+void LCD_SendDecimal(int32_t valor) {
+  char buffer[12];
+  
+  if (valor < 0) {
+    LCD_SendData('-');
+    valor = -valor;
+  }
+
+  int32_t parte_inteira = valor / 100;
+  ltoa(parte_inteira, buffer, 10);
+  LCD_SendString(buffer);
+  LCD_SendData('.');
+
+  int32_t parte_fracionaria = valor % 100;
+
+  if (parte_fracionaria < 10) {
+    LCD_SendData('0');
+  }
+
+  ltoa(parte_fracionaria, buffer, 10);
+  LCD_SendString(buffer);
+}
+
+void LCD_LoadCustomChar(void) {
+  uint8_t i, j;
+  // Aponta para o início da memória CGRAM
+  LCD_SendCommand(0x40); 
+
+  for (i = 0; i < 6; i++) {
+    for (j = 0; j < 8; j++) {
+      LCD_SendData(custom_chars[i][j]);
+    }
+  }
+  // Retorna o cursor para a memória de display
+  LCD_SendCommand(0x80); 
+}
+
+void LCD_PrintIcon(uint8_t col) {
+  LCD_SetCursor(0, col);
+  LCD_SendData(0);
+  LCD_SendData(1);
+  LCD_SendData(2);
+  LCD_SetCursor(1, col);
+  LCD_SendData(3);
+  LCD_SendData(4);
+  LCD_SendData(5);
 }
