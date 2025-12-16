@@ -30,14 +30,22 @@
 #include "dht11.h"
 #include "lcd.h"
 
+// --- Definições de Hardware ---
+#define BUTTON_PIN    PD2
+#define BUTTON_PORT   PORTD
+#define BUTTON_PIN_IN PIND
+
 // --- Limites de Alarme ---
 #define TEMPERATURE_THRESHOLD 3500   // 35.00 Graus Celsius
-#define PRESSURE_THRESHOLD    50600  // 506.00 hPa
+#define PRESSURE_THRESHOLD    80000  // 800.00 hPa
 #define HUMIDITY_THRESHOLD    30     // 30% de humidade
 
 // --- Variáveis Globais ---
 volatile uint8_t read_sensor_flag = 0;
 volatile uint8_t seconds_count = 0;
+
+// --- Estado da tela: 0 (Temp/Pres), 1 (Pres/Hum), 2 (Hum/Temp) ---
+uint8_t current_screen = 0;
 
 // --- Variáveis do Timer ---
 const uint16_t T1_init = 0;
@@ -64,11 +72,15 @@ const uint8_t custom_chars[6][8] = {
 // --- Protótipos ---
 void MCU_Init(void);
 void TMR1_Init(void);
+void Check_Button(void);
 
-void LCD_UpdateData(int32_t temperature, uint32_t pressure);
-void LCD_SendDecimal(int32_t value);
+void LCD_RefreshScreen(int32_t temperature, uint32_t pressure, DHT11_Data dht11);
+void LCD_FormatTemperature(int32_t temperature);
+void LCD_FormatPressure(uint32_t pressure);
+void LCD_FormatHumidity(DHT11_Data dht11);
+
 void LCD_LoadCustomChar(void);
-void LCD_TelaInicial(void);
+void LCD_HomeScreen(void);
 void LCD_PrintIcon(uint8_t column);
 
 // ----------------------------------------
@@ -95,20 +107,37 @@ int main(void) {
   BMP280_Init(); 
   BMP280_ReadCalibration();
 
-  LCD_TelaInicial();
+  LCD_HomeScreen();
 
-  int32_t temperature;
-  uint32_t pressure;
-  DHT11_Data humidity;
+  int32_t temperature = 0;
+  uint32_t pressure = 0;
+  DHT11_Data dht11 = {0,0,0,0,1};
+
+  // força a primeira leitura
+  BMP280_ReadSensor(&temperature, &pressure);
+  dht11 = DHT11_Read();
+  LCD_RefreshScreen(temperature, pressure, dht11);
 
   while (1) {
+    // polling contínuo
+    if (!(BUTTON_PIN_IN & (1 << BUTTON_PIN))) { // checa se LOW (Botão pressionado)
+      _delay_ms(50);
+      if (!(BUTTON_PIN_IN & (1 << BUTTON_PIN))) {
+        current_screen++;
+        if (current_screen > 2) current_screen = 0;
+        LCD_RefreshScreen(temperature, pressure, dht11);
+        while(!(BUTTON_PIN_IN & (1 << BUTTON_PIN))); // espera o botão ser liberado
+      }
+    }
+
+    // leitura periódica dos sensores
     if (read_sensor_flag) {
       read_sensor_flag = 0;
 
       BMP280_ReadSensor(&temperature, &pressure);
-      humidity = DHT11_Read();
+      dht11 = DHT11_Read();
 
-      // EXEMPLO DE APLICAÇÃO
+      // ALARMES
       // LED PB0: Temperatura Alta
       if (temperature >= TEMPERATURE_THRESHOLD) PORTB |= (1<<PB0);
       else PORTB &= ~(1<<PB0);
@@ -118,11 +147,10 @@ int main(void) {
       else PORTB |= (1<<PB1);
 
       // LED PB2: Humidade Baixa
-      if (humidity.humidity_int < HUMIDITY_THRESHOLD) PORTB |= (1<<PB2);
+      if (dht11.humidity_int < HUMIDITY_THRESHOLD) PORTB |= (1<<PB2);
       else PORTB &= ~(1<<PB2); 
 
-      LCD_UpdateData(temperature, pressure);
-      LCD_PrintIcon(13);
+      LCD_RefreshScreen(temperature, pressure, dht11);
     }
   }
   return 0;
@@ -142,9 +170,12 @@ void MCU_Init(void) {
   CLKPR = (1<<CLKPCE);  // Habilita a mudança
   CLKPR = 0x00;         // Define divisor como 1 (Clock total)
 
-  // 4. Inicializa Portas
+  // 4. Configura GPIO
   DDRB  = 0xFF; 
   PORTB = 0x00;
+
+  DDRD &= ~(1 << BUTTON_PIN);
+  PORTD |= (1 << BUTTON_PIN);
 
   // 5. Configura protocolo I2C
   TWI_Init(); 
@@ -164,11 +195,9 @@ void TMR1_Init(void) {
   TCCR1B = 0;
 
   // Configura o Prescaler do Timer 1:1024 [101]
-  TCCR1B |= (1<<CS12);
-  TCCR1B &= ~(1<<CS11);
-  TCCR1B |= (1<<CS10);
+  TCCR1B |= (1<<CS12) | (1<<CS10);
 
-  // Limpa o timer ao comparar com OCR1A
+  // Limpa o timer ao comparar com OCR1A - Modo CTC
   TCCR1B |= (1<<WGM12);
 
   // Inicializa Registradores do contador e o valor de comparação
@@ -180,50 +209,79 @@ void TMR1_Init(void) {
 }
 
 // --- Personalização de Telas LCD ---
-void LCD_UpdateData(int32_t temperature, uint32_t pressure) {
+void LCD_RefreshScreen(int32_t temperature, uint32_t pressure, DHT11_Data humidity) {
   LCD_Clear();
-  LCD_SetCursor(0, 0);
-  LCD_SendString("T: ");
-  LCD_SendDecimal(temperature);
-  LCD_SendData(0xDF); // Caractere 'º'
-  LCD_SendString("C");
-  
-  char buffer[16];
-  ltoa(pressure/100, buffer, 10);
-  LCD_SetCursor(1, 0);
-  LCD_SendString("P: ");
+
+  switch (current_screen) {
+    case 0: // TELA 0: Temp (L1) e Pressão (L2)
+      LCD_SetCursor(0, 0);
+      LCD_SendString("T: "); LCD_FormatTemperature(temperature);
+      LCD_SetCursor(1, 0);
+      LCD_SendString("P: "); LCD_FormatPressure(pressure);
+      break;
+
+    case 1: // TELA 1: Pressão (L1) e Umidade (L2)
+      LCD_SetCursor(0, 0);
+      LCD_SendString("P: "); LCD_FormatPressure(pressure);
+      LCD_SetCursor(1, 0);
+      LCD_SendString("H: "); LCD_FormatHumidity(humidity);
+      break;
+
+    case 2: // TELA 2: Umidade (L1) e Temp (L2)
+      LCD_SetCursor(0, 0);
+      LCD_SendString("H: "); LCD_FormatHumidity(humidity);
+      LCD_SetCursor(1, 0);
+      LCD_SendString("T: "); LCD_FormatTemperature(temperature);
+      break;
+  }
+
+  LCD_PrintIcon(12);
+}
+
+void LCD_FormatTemperature(int32_t temperature) {
+  char buffer[8];
+
+  if (temperature < 0) {
+    LCD_SendData('-');
+    temperature = -temperature;
+  }
+  // envia parte inteira
+  ltoa(temperature/100, buffer, 10);
+  LCD_SendString(buffer);
+  LCD_SendData('.');
+  // envia parte decimal
+  ltoa(temperature%100, buffer, 10);
+  if((temperature%100) < 10) LCD_SendString("0"); 
+  LCD_SendString(buffer);
+
+  LCD_SendData(0xDF); LCD_SendString("C");
+}
+
+void LCD_FormatPressure(uint32_t pressure) {
+  char buffer[6];
+  ltoa(pressure/100, buffer, 10); // Exibindo hPa inteiro
   LCD_SendString(buffer);
   LCD_SendString(" hPa");
 }
 
-void LCD_SendDecimal(int32_t value) {
-  char buffer[12];
-  
-  if (value < 0) {
-    LCD_SendData('-');
-    value = -value;
+void LCD_FormatHumidity(DHT11_Data dht11) {
+  char buffer[4];
+  if (dht11.error) {
+    LCD_SendString("-- %");
+  } else {
+    itoa(dht11.humidity_int, buffer, 10);
+    LCD_SendString(buffer);
+    LCD_SendData('.');
+    itoa(dht11.humidity_dec, buffer, 10);
+    LCD_SendString(buffer);
+    LCD_SendString(" %");
   }
-
-  int32_t parte_inteira = value / 100;
-  ltoa(parte_inteira, buffer, 10);
-  LCD_SendString(buffer);
-  LCD_SendData('.');
-
-  int32_t parte_fracionaria = value % 100;
-
-  if (parte_fracionaria < 10) {
-    LCD_SendData('0');
-  }
-
-  ltoa(parte_fracionaria, buffer, 10);
-  LCD_SendString(buffer);
 }
 
 void LCD_LoadCustomChar(void) {
   uint8_t i, j;
   // Aponta para o início da memória CGRAM
   LCD_SendCommand(0x40); 
-
   for (i = 0; i < 6; i++) {
     for (j = 0; j < 8; j++) {
       LCD_SendData(custom_chars[i][j]);
@@ -233,15 +291,17 @@ void LCD_LoadCustomChar(void) {
   LCD_SendCommand(0x80); 
 }
 
-void LCD_TelaInicial(void) {
+void LCD_HomeScreen(void) {
   LCD_SetCursor(0, 3);
   LCD_SendString("-- UFBA --");
-  _delay_ms(2000);
+  _delay_ms(1400);
   LCD_Clear();
   LCD_SetCursor(0, 4);
   LCD_SendString("Sistemas");
   LCD_SetCursor(1, 0);
   LCD_SendString("Microcontrolados");
+  _delay_ms(1400);
+  LCD_Clear();
 }
 
 void LCD_PrintIcon(uint8_t column) {
