@@ -16,7 +16,8 @@
       - SCL: PC5 (A5)
       - CSB: +5V
       - SDO: GND
- -------------------------------------------- */
+-------------------------------------------- */
+
 #define F_CPU 16000000UL
 
 #include <avr/io.h>
@@ -29,8 +30,8 @@
 #include "lcd.h"
 
 // --- Limites de Alarme ---
-#define TEMP_THRESHOLD   3500   // 35.00 Graus Celsius
-#define PRESS_THRESHOLD  50600  // 506.00 hPa
+#define TEMPERATURE_THRESHOLD 3500   // 35.00 Graus Celsius
+#define PRESSURE_THRESHOLD    50600  // 506.00 hPa
 
 // --- Variáveis Globais ---
 volatile uint8_t read_sensor_flag = 0;
@@ -38,7 +39,7 @@ volatile uint8_t seconds_count = 0;
 
 // --- Variáveis do Timer ---
 const uint16_t T1_init = 0;
-const uint16_t T1_comp = 15625;
+const uint16_t T1_comparator = 15625;
 // Gerenciar intervalo de leitura do sensor
 const uint8_t read_interval = 5;
 
@@ -62,11 +63,11 @@ const uint8_t custom_chars[6][8] = {
 void MCU_Init(void);
 void TMR1_Init(void);
 
-void LCD_UpdateData(int32_t temp, uint32_t press);
-void LCD_SendDecimal(int32_t valor);
+void LCD_UpdateData(int32_t temperature, uint32_t pressure);
+void LCD_SendDecimal(int32_t value);
 void LCD_LoadCustomChar(void);
 void LCD_TelaInicial(void);
-void LCD_PrintIcon(uint8_t col);
+void LCD_PrintIcon(uint8_t column);
 
 // ----------------------------------------
 // TRATAMENTO DA INTERRUPÇÃO
@@ -94,25 +95,25 @@ int main(void) {
 
   LCD_TelaInicial();
 
-  int32_t temp;
-  uint32_t press;
+  int32_t temperature;
+  uint32_t pressure;
 
   while (1) {
     if (read_sensor_flag) {
       read_sensor_flag = 0;
 
-      BMP280_ReadSensor(&temp, &press);
+      BMP280_ReadSensor(&temperature, &pressure);
 
       // EXEMPLO DE APLICAÇÃO
       // LED PB0: Temperatura Alta
-      if (temp >= TEMP_THRESHOLD) PORTB |= (1<<PB0);
+      if (temperature >= TEMPERATURE_THRESHOLD) PORTB |= (1<<PB0);
       else PORTB &= ~(1<<PB0);
 
       // LED PB1: Pressão Baixa
-      if (press > PRESS_THRESHOLD) PORTB &= ~(1<<PB1);
+      if (pressure > PRESSURE_THRESHOLD) PORTB &= ~(1<<PB1);
       else PORTB |= (1<<PB1);
 
-      LCD_UpdateData(temp, press);
+      LCD_UpdateData(temperature, pressure);
       LCD_PrintIcon(13);
     }
   }
@@ -164,43 +165,43 @@ void TMR1_Init(void) {
 
   // Inicializa Registradores do contador e o valor de comparação
   TCNT1 = T1_init;
-  OCR1A = T1_comp;
+  OCR1A = T1_comparator;
 
   // Habilita a Interrupção de Comparação A do Timer1
   TIMSK1 |= (1<<OCIE1A);
 }
 
 // --- Personalização de Telas LCD ---
-void LCD_UpdateData(int32_t temp, uint32_t press) {
-  char buffer[16];
+void LCD_UpdateData(int32_t temperature, uint32_t pressure) {
   LCD_Clear();
   LCD_SetCursor(0, 0);
   LCD_SendString("T: ");
-  LCD_SendDecimal(temp);
+  LCD_SendDecimal(temperature);
   LCD_SendData(0xDF); // Caractere 'º'
   LCD_SendString("C");
-
-  ltoa(press/100, buffer, 10);
+  
+  char buffer[16];
+  ltoa(pressure/100, buffer, 10);
   LCD_SetCursor(1, 0);
   LCD_SendString("P: ");
   LCD_SendString(buffer);
   LCD_SendString(" hPa");
 }
 
-void LCD_SendDecimal(int32_t valor) {
+void LCD_SendDecimal(int32_t value) {
   char buffer[12];
   
-  if (valor < 0) {
+  if (value < 0) {
     LCD_SendData('-');
-    valor = -valor;
+    value = -value;
   }
 
-  int32_t parte_inteira = valor / 100;
+  int32_t parte_inteira = value / 100;
   ltoa(parte_inteira, buffer, 10);
   LCD_SendString(buffer);
   LCD_SendData('.');
 
-  int32_t parte_fracionaria = valor % 100;
+  int32_t parte_fracionaria = value % 100;
 
   if (parte_fracionaria < 10) {
     LCD_SendData('0');
@@ -235,12 +236,12 @@ void LCD_TelaInicial(void) {
   LCD_SendString("Microcontrolados");
 }
 
-void LCD_PrintIcon(uint8_t col) {
-  LCD_SetCursor(0, col);
+void LCD_PrintIcon(uint8_t column) {
+  LCD_SetCursor(0, column);
   LCD_SendData(0);
   LCD_SendData(1);
   LCD_SendData(2);
-  LCD_SetCursor(1, col);
+  LCD_SetCursor(1, column);
   LCD_SendData(3);
   LCD_SendData(4);
   LCD_SendData(5);
