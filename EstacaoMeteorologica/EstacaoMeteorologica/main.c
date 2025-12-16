@@ -23,14 +23,18 @@
 #include <avr/wdt.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
+#include <stdlib.h> 
 
 #include "twi.h"
 #include "bmp280.h"
+#include "dht11.h"
 #include "lcd.h"
+
 
 // --- Limites de Alarme ---
 #define TEMP_THRESHOLD   3500   // 35.00 Graus Celsius
 #define PRESS_THRESHOLD  50600  // 506.00 hPa
+#define HUM_THRESHOLD 30 // 30% de humidade
 
 // --- Variáveis Globais ---
 volatile uint8_t read_sensor_flag = 0;
@@ -62,7 +66,7 @@ const uint8_t custom_chars[6][8] = {
 void MCU_Init(void);
 void TMR1_Init(void);
 
-void LCD_UpdateData(int32_t temp, uint32_t press);
+void LCD_UpdateData(int32_t temp, uint32_t press, uint8_t hum);
 void LCD_SendDecimal(int32_t valor);
 void LCD_LoadCustomChar(void);
 void LCD_TelaInicial(void);
@@ -84,6 +88,7 @@ ISR(TIMER1_COMPA_vect) {
 // PROGRAMA PRINCIPAL
 // ----------------------------------------
 int main(void) {
+  
   MCU_Init();
 
   LCD_Init();
@@ -96,12 +101,17 @@ int main(void) {
 
   int32_t temp;
   uint32_t press;
+  DHT11_Data hum;
 
   while (1) {
     if (read_sensor_flag) {
       read_sensor_flag = 0;
 
       BMP280_ReadSensor(&temp, &press);
+
+      cli(); // Para nao corromper o dados da contagem 
+      hum = dht11_read();
+      sei();
 
       // EXEMPLO DE APLICAÇÃO
       // LED PB0: Temperatura Alta
@@ -112,12 +122,23 @@ int main(void) {
       if (press > PRESS_THRESHOLD) PORTB &= ~(1<<PB1);
       else PORTB |= (1<<PB1);
 
-      LCD_UpdateData(temp, press);
-      LCD_PrintIcon(13);
-    }
-  }
+      // LED PB2: Humidade Baixa
+      if (hum.hum_int < HUM_THRESHOLD) PORTB |= (1<<PB2);
+      else PORTB &= ~(1<<PB2); 
+      
+      // ERROR DHT11
+      //if (hum.error == 0) {
+       // LCD_UpdateData(temp, press,hum.hum_int);
+      //} else {
+
+        
+      LCD_UpdateData(temp, press,hum.hum_int);
+      //LCD_PrintIcon(13);
+     }
+   }
   return 0;
 }
+
 
 // --------------------------------------------------------
 // CONFIGURAÇÃO DE BAIXO NÍVEL
@@ -139,6 +160,8 @@ void MCU_Init(void) {
 
   // 5. Configura protocolo I2C
   TWI_Init(); 
+
+  PORTC |= (1 << PC4) | (1 << PC5);
   
   // 6. Configura Timer
   TMR1_Init();
@@ -171,18 +194,25 @@ void TMR1_Init(void) {
 }
 
 // --- Personalização de Telas LCD ---
-void LCD_UpdateData(int32_t temp, uint32_t press) {
-  char buffer[16];
+void LCD_UpdateData(int32_t temp, uint32_t press, uint8_t hum) {
+  char buffer[8];
   LCD_Clear();
   LCD_SetCursor(0, 0);
   LCD_SendString("T: ");
   LCD_SendDecimal(temp);
   LCD_SendData(0xDF); // Caractere 'º'
   LCD_SendString("C");
+  
+  
+  LCD_SendString(" H:");
+  ltoa(hum, buffer, 10);
+  LCD_SendString(buffer);
+  LCD_SendData('%');
+  
 
-  ltoa(press/100, buffer, 10);
   LCD_SetCursor(1, 0);
   LCD_SendString("P: ");
+  ltoa(press/100, buffer, 10);
   LCD_SendString(buffer);
   LCD_SendString(" hPa");
 }
