@@ -27,11 +27,13 @@
 
 #include "twi.h"
 #include "bmp280.h"
+#include "dht11.h"
 #include "lcd.h"
 
 // --- Limites de Alarme ---
 #define TEMPERATURE_THRESHOLD 3500   // 35.00 Graus Celsius
 #define PRESSURE_THRESHOLD    50600  // 506.00 hPa
+#define HUMIDITY_THRESHOLD    30     // 30% de humidade
 
 // --- Variáveis Globais ---
 volatile uint8_t read_sensor_flag = 0;
@@ -97,12 +99,14 @@ int main(void) {
 
   int32_t temperature;
   uint32_t pressure;
+  DHT11_Data humidity;
 
   while (1) {
     if (read_sensor_flag) {
       read_sensor_flag = 0;
 
       BMP280_ReadSensor(&temperature, &pressure);
+      humidity = DHT11_Read();
 
       // EXEMPLO DE APLICAÇÃO
       // LED PB0: Temperatura Alta
@@ -112,6 +116,10 @@ int main(void) {
       // LED PB1: Pressão Baixa
       if (pressure > PRESSURE_THRESHOLD) PORTB &= ~(1<<PB1);
       else PORTB |= (1<<PB1);
+
+      // LED PB2: Humidade Baixa
+      if (humidity.humidity_int < HUMIDITY_THRESHOLD) PORTB |= (1<<PB2);
+      else PORTB &= ~(1<<PB2); 
 
       LCD_UpdateData(temperature, pressure);
       LCD_PrintIcon(13);
