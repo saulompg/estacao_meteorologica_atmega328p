@@ -70,7 +70,7 @@ static uint8_t dht11_read_byte(void) {
 }
 
 DHT11_Data dht11_read(void) {
-  DHT11_Data dados = {0,0,0,0,1}; // se nao chegar ao final, erro e 1
+  DHT11_Data dados = {0,0,0,0,0,1}; // se nao chegar ao final, erro e 1
   uint8_t buffer[5];
 
   dht11_start(); 

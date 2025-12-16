@@ -109,9 +109,7 @@ int main(void) {
 
       BMP280_ReadSensor(&temp, &press);
 
-      cli(); // Para nao corromper o dados da contagem 
       hum = dht11_read();
-      sei();
 
       // EXEMPLO DE APLICAÇÃO
       // LED PB0: Temperatura Alta
