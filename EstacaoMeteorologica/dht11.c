@@ -26,21 +26,21 @@ static void DHT11_Start(void) {
 // Handshake do DHT
 static uint8_t DHT11_CheckResponse(void) {
   // Espera o sensor baixar a tensao - 80us
-  uint16_t timeout = MAX_TIMEOUT;
+  uint16_t timeout = DHT11_MAX_TIMEOUT;
   while (DHT_PIN & (1 << DHT_BIT)) {
     _delay_us(1);
     if (--timeout == 0) return 0; // Erro: Sensor não respondeu (ficou HIGH)
   }
 
   // Espera o sensor subir a tensao - 80us 
-  timeout = MAX_TIMEOUT;
+  timeout = DHT11_MAX_TIMEOUT;
   while (!(DHT_PIN & (1 << DHT_BIT))) {
     _delay_us(1);
     if (--timeout == 0) return 0; // Erro: Sensor travou em LOW
   }
 
   // Espera o sensor baixar novamente (inicio dos dados)
-  timeout = MAX_TIMEOUT;
+  timeout = DHT11_MAX_TIMEOUT;
   while (DHT_PIN & (1 << DHT_BIT)) {
     _delay_us(1);
     if (--timeout == 0) return 0; // Erro: Sensor não iniciou transmissão
@@ -53,7 +53,7 @@ static uint8_t DHT11_ReadByte(void) {
   uint8_t result = 0;
 
   for(uint8_t i = 0; i < 8; i++) {
-    uint8_t timeout = MAX_TIMEOUT;
+    uint8_t timeout = DHT11_MAX_TIMEOUT;
 
     // Espera o fim do preambulo - 50us de LOW
     while(!(DHT_PIN & (1 << DHT_BIT))) {
@@ -67,7 +67,7 @@ static uint8_t DHT11_ReadByte(void) {
       result |= (1 << (7-i)); 
 
       // Espera o bit 1 terminar
-      timeout = MAX_TIMEOUT;
+      timeout = DHT11_MAX_TIMEOUT;
       while (DHT_PIN & (1 << DHT_BIT)) {
         if (--timeout == 0) return 0;
       }

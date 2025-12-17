@@ -110,12 +110,14 @@ void BMP280_ReadCalibration(void) {
 }
 
 void BMP280_ReadSensor(int32_t *temp_final, uint32_t *press_final) {
+  // Apontamento
   TWI_Start();
-  TWI_Write(BMP280_ADDR << 1);
+  TWI_Write(BMP280_ADDR << 1);  // Modo Escrita (0)
   TWI_Write(BMP280_REG_DATA);   // Ponteiro no início dos dados
 
-  TWI_Start(); // Restart
-  TWI_Write((BMP280_ADDR << 1) | 1); // Modo Leitura
+  // Leitura Sequencial
+  TWI_Start();
+  TWI_Write((BMP280_ADDR << 1) | 1); // Modo Leitura (1)
 
   // Lê 6 bytes em sequência
   uint8_t p_msb = TWI_Read_ACK();

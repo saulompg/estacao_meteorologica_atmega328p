@@ -17,11 +17,12 @@
 #define F_SCL 100000UL
 #define PRESCALER 1
 #define TWBR_VAL ((((F_CPU / F_SCL) / PRESCALER) - 16) / 2)
+#define TWI_TIMEOUT_MAX 5000
 
-void TWI_Init();
-void TWI_Start();
-void TWI_Stop();
-void TWI_Write(uint8_t data);
+void TWI_Init(void);
+uint8_t TWI_Start(void);
+void TWI_Stop(void);
+uint8_t TWI_Write(uint8_t data);
 uint8_t TWI_Read_ACK(void);
 uint8_t TWI_Read_NACK(void);
 

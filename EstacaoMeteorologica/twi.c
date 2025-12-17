@@ -16,6 +16,7 @@
 ------------------------------------------------------------ */
 
 #include "twi.h"
+#include <util/delay.h>
 
 void TWI_Init(void) {
   TWSR = 0x00;                // Prescaler = 1
@@ -23,11 +24,18 @@ void TWI_Init(void) {
   TWCR = (1 << TWEN);         // Habilita o modulo TWI
 }
 
-void TWI_Start(void) {
+uint8_t TWI_Start(void) {
   // Envia Start Condition
   TWCR = (1 << TWINT) | (1 << TWSTA) | (1 << TWEN);
+
+  uint16_t timeout = TWI_TIMEOUT_MAX;
+
   // Espera a TWINT Flag. Indica que o hardware terminou
-  while (!(TWCR & (1 << TWINT)));
+  while (!(TWCR & (1 << TWINT))) {
+    _delay_us(1);
+    if(--timeout == 0) return 1; // FALHA
+  }
+  return 0; // SUCESSO
 }
 
 void TWI_Stop(void) {
@@ -35,24 +43,43 @@ void TWI_Stop(void) {
   TWCR = (1 << TWINT) | (1 << TWEN) | (1 << TWSTO);
 }
 
-void TWI_Write(uint8_t data) {
+uint8_t TWI_Write(uint8_t data) {
   // Armazena dado no buffer
   TWDR = data;
-  // Inicia a transmiss o
+
+  uint16_t timeout = TWI_TIMEOUT_MAX;
+
+  // Inicia a transmissão
   TWCR = (1 << TWINT) | (1 << TWEN);
   // Espera terminar e receber o ACK/NACK
-  while (!(TWCR & (1 << TWINT)));
+  while (!(TWCR & (1 << TWINT))) {
+    _delay_us(1);
+    if (--timeout == 0) return 1;
+  }
+  return 0;
 }
 
 uint8_t TWI_Read_ACK(void) {
   TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA);
-  while (!(TWCR & (1<<TWINT)));
+
+  uint16_t timeout = TWI_TIMEOUT_MAX;
+
+  while (!(TWCR & (1<<TWINT))) {
+    _delay_us(1);
+    if (--timeout == 0) return 0xFF; // retorno seguro em caso de timeout
+  }
   return TWDR;
 }
 
 uint8_t TWI_Read_NACK(void) {
   TWCR = (1<<TWINT) | (1<<TWEN);
-  while (!(TWCR & (1<<TWINT)));
+
+  uint16_t timeout = TWI_TIMEOUT_MAX;
+
+  while (!(TWCR & (1<<TWINT))) {
+    _delay_us(1);
+    if (--timeout == 0) return 0xFF; // retorno seguro em caso de timeout
+  }
   return TWDR;
 }
 

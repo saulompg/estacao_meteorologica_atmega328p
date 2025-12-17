@@ -16,7 +16,7 @@
 #define DHT_PIN PINC
 #define DHT_BIT PC0
 
-#define MAX_TIMEOUT 200
+#define DHT11_MAX_TIMEOUT 200
 
 // Estrutura de dados
 typedef struct {
