@@ -8,7 +8,12 @@
 #ifndef LCD_H
 #define	LCD_H
 
+#ifndef F_CPU
+#define F_CPU 16000000UL
+#endif
+
 #include <stdint.h>
+#include <util/delay.h>
 #include "twi.h"
 
 // Definições de Endereçamento no PCF8574

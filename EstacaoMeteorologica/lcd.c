@@ -5,7 +5,6 @@
  Comunicação em modo 4 bits - envio de nibble alto seguido do nibble baixo
 ------------------------------------------------------------ */
 
-#include <util/delay.h>
 #include "lcd.h"
 
 void LCD_SendNibble(uint8_t nibble) {
@@ -21,15 +20,15 @@ void LCD_SendNibble(uint8_t nibble) {
 }
 
 void LCD_SendCommand(uint8_t cmd) {
-    uint8_t highNibble = cmd & 0xF0 & ~LCD_RS;
-    uint8_t lowNibble = (cmd << 4) & 0xF0 & ~LCD_RS;
+    uint8_t highNibble = (cmd & 0xF0) & ~LCD_RS;
+    uint8_t lowNibble = ((cmd << 4) & 0xF0) & ~LCD_RS;
     LCD_SendNibble(highNibble);
     LCD_SendNibble(lowNibble);
 }
 
 void LCD_SendData(uint8_t data) {
-    uint8_t highNibble = data & 0xF0 | LCD_RS;
-    uint8_t lowNibble = (data << 4) & 0xF0 | LCD_RS;
+    uint8_t highNibble = (data & 0xF0) | LCD_RS;
+    uint8_t lowNibble = ((data << 4) & 0xF0) | LCD_RS;
     LCD_SendNibble(highNibble);
     LCD_SendNibble(lowNibble);
 }

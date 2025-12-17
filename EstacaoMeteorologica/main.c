@@ -24,6 +24,7 @@
 #include <avr/wdt.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
+#include <stdlib.h>
 
 #include "twi.h"
 #include "bmp280.h"

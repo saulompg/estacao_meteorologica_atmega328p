@@ -7,6 +7,10 @@
 #ifndef DHT11_H
 #define DHT11_H
 
+#ifndef F_CPU
+#define F_CPU 16000000UL
+#endif
+
 #include <stdint.h>
 #include <avr/io.h>
 #include <util/delay.h>
