@@ -17,7 +17,7 @@
 #include "twi.h"
 
 // Definições de Endereçamento no PCF8574
-#define LCD_ADDR         0x20 // Endereço I2C (7 bits)
+#define LCD_ADDR         0x27 // Endereço I2C (7 bits)
 #define LCD_RS           0x01 // Bit 0 (Register Select)
 #define LCD_RW           0x02 // Bit 1 (Read/Write)
 #define LCD_EN           0x04 // Bit 2 (Enable)
